@@ -1,0 +1,65 @@
+SynergyPark Authentication Features - Implementation Steps
+
+1. Overview
+This document explains, step by step, how the authentication features were implemented in the SynergyPark MERN Stack project. The steps are organized by frontend and backend, and cover all major features.
+
+2. Frontend Implementation Steps
+
+A. Sign In (Login)
+- Located and reviewed the existing login page/component.
+- Added a CAPTCHA input and image to the form for bot protection.
+- Added GitHub and Google OAuth buttons to the form.
+- Connected the form to the backend API for authentication, including CAPTCHA validation.
+- Improved error and loading state handling for better user feedback.
+
+B. Sign Up (Register)
+- Located and reviewed the existing registration page/component.
+- Added GitHub and Google OAuth buttons to the form.
+- Connected the form to the backend API for user registration.
+- Improved form validation and error/success messages.
+
+C. Sign Out
+- Used the existing context/provider to clear user data and token on sign out.
+- Ensured the sign out button is available on the profile page.
+
+D. Reset Password
+- Located and reviewed the forgot password and reset password pages/components.
+- Connected the forgot password form to the backend API to send a reset email.
+- Connected the reset password form to the backend API to update the password using a secure token.
+- Added validation and user feedback for both forms.
+
+E. Profile Card
+- Located and reviewed the profile page/component.
+- Connected the form to the backend API to fetch and update user profile data.
+- Added a section for changing the user password.
+- Ensured the sign out button is present and functional.
+
+F. General
+- Used the same design, layout, and UI components as the original project for all changes.
+- Ensured all forms have proper validation, error handling, and loading states.
+
+3. Backend Implementation Steps
+
+A. Authentication Routes
+- Reviewed and updated the authentication routes to support all required features.
+- Added a CAPTCHA generation endpoint and validation logic.
+- Added endpoints for GitHub and Google OAuth (placeholders for future integration).
+- Implemented forgot password and reset password logic using secure tokens.
+- Improved error handling and security throughout the authentication routes.
+
+B. User Profile Routes
+- Added endpoints to get and update user profile information.
+- Added an endpoint to change the user password with validation.
+- Ensured all profile routes require authentication.
+
+C. General
+- Used secure password hashing and token management.
+- Used environment variables for sensitive configuration (API URLs, OAuth credentials).
+- Ensured all new routes and logic follow best practices for security and error handling.
+
+4. Testing and Usage
+- Verified that all authentication features work as expected in the browser.
+- Confirmed that the UI remains consistent with the original design.
+- Confirmed that all API endpoints respond correctly and securely.
+
+End of Steps 

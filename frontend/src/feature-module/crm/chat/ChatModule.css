@@ -1,0 +1,194 @@
+/* Chat Module Styles */
+.chat-modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1050;
+}
+
+.chat-modal {
+  width: 800px;
+  height: 600px;
+  max-width: 90vw;
+  max-height: 90vh;
+}
+
+.chat-conversations,
+.chat-messages {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.chat-header {
+  flex-shrink: 0;
+}
+
+.conversation-list {
+  flex: 1;
+  overflow-y: auto;
+}
+
+.messages-container {
+  flex: 1;
+  overflow-y: auto;
+}
+
+.chat-input {
+  flex-shrink: 0;
+}
+
+.message-bubble {
+  word-wrap: break-word;
+}
+
+.conversation-item:hover {
+  background-color: #f8f9fa !important;
+}
+
+.user-search-results {
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.emoji-picker-container {
+  position: absolute;
+  bottom: 70px;
+  right: 20px;
+  z-index: 1000;
+}
+
+.file-preview {
+  background-color: #f8f9fa;
+}
+
+.message-actions {
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.message-item:hover .message-actions {
+  opacity: 1;
+}
+
+.reactions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.reaction {
+  background-color: rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+  padding: 2px 6px;
+  font-size: 0.875rem;
+}
+
+.reply-indicator {
+  border-left: 3px solid #007bff;
+  margin-left: 8px;
+}
+
+.avatar-status {
+  width: 12px;
+  height: 12px;
+}
+
+/* Recording animation */
+@keyframes recording-pulse {
+  0% { opacity: 1; }
+  50% { opacity: 0.5; }
+  100% { opacity: 1; }
+}
+
+.btn-danger {
+  animation: recording-pulse 1s infinite;
+}
+
+/* Typing indicator */
+.typing-indicator {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.typing-indicator span {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background-color: #007bff;
+  animation: typing-bounce 1.4s infinite ease-in-out;
+}
+
+.typing-indicator span:nth-child(1) { animation-delay: -0.32s; }
+.typing-indicator span:nth-child(2) { animation-delay: -0.16s; }
+
+@keyframes typing-bounce {
+  0%, 80%, 100% { 
+    transform: scale(0);
+  } 40% { 
+    transform: scale(1);
+  }
+}
+
+/* Scrollbar styling */
+.conversation-list::-webkit-scrollbar,
+.messages-container::-webkit-scrollbar,
+.user-search-results::-webkit-scrollbar {
+  width: 6px;
+}
+
+.conversation-list::-webkit-scrollbar-track,
+.messages-container::-webkit-scrollbar-track,
+.user-search-results::-webkit-scrollbar-track {
+  background: #f1f1f1;
+}
+
+.conversation-list::-webkit-scrollbar-thumb,
+.messages-container::-webkit-scrollbar-thumb,
+.user-search-results::-webkit-scrollbar-thumb {
+  background: #c1c1c1;
+  border-radius: 3px;
+}
+
+.conversation-list::-webkit-scrollbar-thumb:hover,
+.messages-container::-webkit-scrollbar-thumb:hover,
+.user-search-results::-webkit-scrollbar-thumb:hover {
+  background: #a8a8a8;
+}
+
+/* Mobile responsiveness */
+@media (max-width: 768px) {
+  .chat-modal {
+    width: 95vw;
+    height: 95vh;
+  }
+  
+  .message-bubble {
+    max-width: 85% !important;
+  }
+}
+
+/* Dark mode support */
+@media (prefers-color-scheme: dark) {
+  .chat-conversations,
+  .chat-messages {
+    background-color: #1a1a1a;
+    color: #ffffff;
+  }
+  
+  .message-bubble.bg-light {
+    background-color: #2d2d2d !important;
+    color: #ffffff;
+  }
+  
+  .reply-indicator {
+    background-color: #2d2d2d;
+  }
+}

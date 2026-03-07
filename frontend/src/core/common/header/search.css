@@ -1,0 +1,124 @@
+/* Search Results Dropdown Styles */
+.search-results-dropdown {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  background: white;
+  border: 1px solid #e0e0e0;
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  z-index: 1000;
+  max-height: 400px;
+  overflow-y: auto;
+  margin-top: 4px;
+}
+
+.search-results-header {
+  padding: 12px 16px;
+  border-bottom: 1px solid #f0f0f0;
+  background: #f8f9fa;
+  border-radius: 8px 8px 0 0;
+}
+
+.search-results-header h6 {
+  margin: 0;
+  color: #333;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.search-results-body {
+  padding: 0;
+}
+
+.search-result-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  border-bottom: 1px solid #f0f0f0;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+}
+
+.search-result-item:hover {
+  background-color: #f8f9fa;
+}
+
+.search-result-item:last-child {
+  border-bottom: none;
+}
+
+.search-result-content {
+  flex: 1;
+}
+
+.company-name {
+  font-weight: 600;
+  color: #333;
+  margin-bottom: 4px;
+  font-size: 14px;
+}
+
+.company-details {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  font-size: 12px;
+  color: #666;
+}
+
+.company-details .founder {
+  color: #666;
+}
+
+.company-details .domain {
+  color: #007bff;
+  font-weight: 500;
+}
+
+.company-details .status {
+  font-size: 10px;
+  padding: 2px 6px;
+}
+
+.search-result-item i {
+  color: #999;
+  font-size: 12px;
+}
+
+.no-results {
+  padding: 24px 16px;
+  text-align: center;
+  color: #666;
+}
+
+.no-results i {
+  font-size: 24px;
+  color: #ccc;
+  margin-bottom: 8px;
+  display: block;
+}
+
+.no-results p {
+  margin: 0;
+  font-size: 14px;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  .search-results-dropdown {
+    position: fixed;
+    top: 60px;
+    left: 10px;
+    right: 10px;
+    max-height: 300px;
+  }
+  
+  .company-details {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+  }
+} 
