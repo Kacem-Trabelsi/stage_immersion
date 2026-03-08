@@ -147,6 +147,30 @@ export const HorizontalSidebarData = [
                 customSubmenuTwo: false,
                 base: 'calendar',
               },
+              {
+                menuValue: 'Meeting',
+                customSubmenuTwo: true,
+                hasSubRoute: true,
+                showSubRoute: false,
+                route: routes.meetingsPlanner,
+                base: 'meeting',
+                subMenusTwo: [
+                  {
+                    menuValue: 'Planner Meeting',
+                    route: routes.meetingsPlanner,
+                    hasSubRoute: false,
+                    showSubRoute: false,
+                    base: 'meetings-planner',
+                  },
+                  {
+                    menuValue: 'Meeting Room',
+                    route: routes.meetingRoom,
+                    hasSubRoute: false,
+                    showSubRoute: false,
+                    base: 'meeting-room',
+                  },
+                ],
+              },
   
               {
                 menuValue: 'Email',

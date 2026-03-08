@@ -317,6 +317,27 @@ export const eventsAPI = {
   }
 };
 
+export const meetingsAPI = {
+  list: async (params = {}) => {
+    try {
+      const response = await apiClient.get('/api/meetings', { params });
+      return response;
+    } catch (error) {
+      console.error('List meetings API error:', error);
+      throw error;
+    }
+  },
+  create: async (meeting) => {
+    try {
+      const response = await apiClient.post('/api/meetings', meeting);
+      return response;
+    } catch (error) {
+      console.error('Create meeting API error:', error);
+      throw error;
+    }
+  }
+};
+
 // Internal Emails API
 export const emailsAPI = {
   getContacts: async () => {

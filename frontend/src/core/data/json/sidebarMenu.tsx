@@ -96,6 +96,30 @@ export const SidebarDataTest = [
             customSubmenuTwo: false,
             base: 'calendar',
           },
+          {
+            label: 'Meeting',
+            customSubmenuTwo: true,
+            submenu: true,
+            showSubRoute: false,
+            link: routes.meetingsPlanner,
+            base: 'meeting',
+            submenuItems: [
+              {
+                label: 'Planner Meeting',
+                link: routes.meetingsPlanner,
+                submenu: false,
+                showSubRoute: false,
+                base: 'meetings-planner',
+              },
+              {
+                label: 'Meeting Room',
+                link: routes.meetingRoom,
+                submenu: false,
+                showSubRoute: false,
+                base: 'meeting-room',
+              },
+            ],
+          },
 
           {
             label: 'Email',

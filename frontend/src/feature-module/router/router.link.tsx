@@ -44,6 +44,8 @@ import Error500 from "../pages/error/error-500";
 import UnderMaintenance from "../pages/underMaintenance";
 import Email from "../application/email";
 import Notifications from "../application/notifications";
+import MeetingsPlanner from "../application/meetingsPlanner";
+import MeetingRoom from "../application/meetingRoom";
 import Chat from "../application/chat";
 import CallHistory from "../application/call/callHistory";
 import FileManager from "../application/fileManager";
@@ -679,6 +681,16 @@ export const publicRoutes = [
   {
     path: routes.notifications,
     element: <Notifications />,
+    route: Route,
+  },
+  {
+    path: routes.meetingsPlanner,
+    element: <MeetingsPlanner />,
+    route: Route,
+  },
+  {
+    path: routes.meetingRoom,
+    element: <MeetingRoom />,
     route: Route,
   },
   {

@@ -113,6 +113,30 @@ export const TowColData = [
                 customSubmenuTwo: false,
                 base:'calender'
               },
+              {
+                menuValue: 'Meeting',
+                hasSubRoute: true,
+                showSubRoute: false,
+                route: routes.meetingsPlanner,
+                customSubmenuTwo: true,
+                base: 'meeting',
+                subMenusTwo: [
+                  {
+                    menuValue: 'Planner Meeting',
+                    route: routes.meetingsPlanner,
+                    hasSubRoute: false,
+                    showSubRoute: false,
+                    base: 'meetings-planner',
+                  },
+                  {
+                    menuValue: 'Meeting Room',
+                    route: routes.meetingRoom,
+                    hasSubRoute: false,
+                    showSubRoute: false,
+                    base: 'meeting-room',
+                  },
+                ],
+              },
   
               {
                 menuValue: 'Email',

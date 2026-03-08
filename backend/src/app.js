@@ -83,6 +83,7 @@ app.use('/api/user-management', require('./routes/userManagement'));
 
 app.use('/api/voice-calls', require('./routes/voiceCalls'));
 app.use('/api/events', require('./routes/events'));
+app.use('/api/meetings', require('./routes/meetingRoutes'));
 app.use('/api/notes', require('./routes/notes'));
 app.use('/api/obstacles', require('./routes/obstacles'));
 app.use('/api/tickets', require('./routes/tickets'));

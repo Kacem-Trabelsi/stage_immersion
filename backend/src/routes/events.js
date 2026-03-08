@@ -36,10 +36,18 @@ router.get('/', authenticateToken, async (req, res) => {
 // Create event for current user
 router.post('/', authenticateToken, async (req, res) => {
   try {
-    const { title, start, end, location, description, color } = req.body;
+    const { title, start, end, location, description, color, isOnline, meetingType, meetingLink, targetRoles } = req.body;
     if (!title || !start) {
       return res.status(400).json({ success: false, message: 'Title and start are required' });
     }
+    const normalizedMeetingType =
+      String(meetingType || (isOnline ? 'ONLINE' : 'OFFLINE')).toUpperCase() === 'ONLINE'
+        ? 'ONLINE'
+        : 'OFFLINE';
+    const normalizedTargetRoles = Array.isArray(targetRoles)
+      ? targetRoles.map((r) => String(r || '').toUpperCase()).filter(Boolean)
+      : ['STARTUP', 'EXPERT', 'S2T'];
+
     const event = await Event.create({
       userId: req.user.userId || req.user._id,
       title,
@@ -47,6 +55,10 @@ router.post('/', authenticateToken, async (req, res) => {
       end,
       location,
       description,
+      isOnline: normalizedMeetingType === 'ONLINE',
+      meetingType: normalizedMeetingType,
+      meetingLink: normalizedMeetingType === 'ONLINE' ? String(meetingLink || '').trim() : '',
+      targetRoles: normalizedTargetRoles,
       color
     });
     res.status(201).json({ success: true, data: event });

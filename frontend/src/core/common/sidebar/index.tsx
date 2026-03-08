@@ -19,6 +19,7 @@ const Sidebar = () => {
   const Location = useLocation();
   const { user } = useAuth();
   const [subOpen, setSubOpen] = useState("");
+  const [childSubOpen, setChildSubOpen] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
   const [searchResults, setSearchResults] = useState<any[]>([]);
   const [showSearchResults, setShowSearchResults] = useState(false);
@@ -82,10 +83,10 @@ const Sidebar = () => {
   };
 
   const toggleSubsidebar = (subitem: any) => {
-    if (subitem === subOpen) {
-      setSubOpen("");
+    if (subitem === childSubOpen) {
+      setChildSubOpen("");
     } else {
-      setSubOpen(subitem);
+      setChildSubOpen(subitem);
     }
   };
 
@@ -453,7 +454,7 @@ const Sidebar = () => {
                                             ? "active"
                                             : ""
                                         } ${
-                                        subOpen === item?.label ? "subdrop" : ""
+                                        childSubOpen === item?.label ? "subdrop" : ""
                                         }`}
                                         onClick={() => {
                                         toggleSubsidebar(item?.label);
@@ -468,7 +469,7 @@ const Sidebar = () => {
                                         <ul
                                         style={{
                                             display:
-                                            subOpen === item?.label ? "block" : "none",
+                                            childSubOpen === item?.label ? "block" : "none",
                                         }}
                                         >
                                         {item?.submenuItems?.map((items: any, k: any) => (

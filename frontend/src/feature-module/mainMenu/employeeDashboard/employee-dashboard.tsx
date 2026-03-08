@@ -15,7 +15,7 @@ import { useCompanyProfile } from "../../../hooks/useCompanyProfile";
 import { useUser } from "../../../hooks/useUser";
 import ticketService from "../../../services/ticketService";
 import VoiceCallService from "../../../services/voiceCallService";
-import { API_BASE_URL } from "../../../services/apiService";
+import { API_BASE_URL, emailsAPI, meetingsAPI } from "../../../services/apiService";
 import "./employee-dashboard.css";
 
 type ExpertUser = {
@@ -31,6 +31,40 @@ type ExpertUser = {
   position?: string;
 };
 
+type DashboardNotificationSource = "email" | "chat" | "call";
+
+type DashboardNotificationUser = {
+  _id?: string;
+  id?: string;
+  userId?: string;
+  firstName?: string;
+  lastName?: string;
+  email?: string;
+  avatar?: string;
+  profilePhoto?: string;
+};
+
+type DashboardNotificationItem = {
+  _id: string;
+  source: DashboardNotificationSource;
+  user?: DashboardNotificationUser;
+  title: string;
+  description?: string;
+  createdAt?: string;
+  isRead: boolean;
+  targetRoute: string;
+};
+
+type DashboardMeetingItem = {
+  _id: string;
+  title: string;
+  start?: string;
+  end?: string;
+  description?: string;
+  meetingType?: "ONLINE" | "OFFLINE";
+  meetingLink?: string;
+};
+
 
 const EmployeeDashboard = () => {
   const routes = all_routes;
@@ -43,6 +77,10 @@ const EmployeeDashboard = () => {
   const [startupExperts, setStartupExperts] = useState<ExpertUser[]>([]);
   const [loadingStartupExperts, setLoadingStartupExperts] = useState(false);
   const [startupExpertsError, setStartupExpertsError] = useState("");
+  const [dashboardNotifications, setDashboardNotifications] = useState<DashboardNotificationItem[]>([]);
+  const [loadingDashboardNotifications, setLoadingDashboardNotifications] = useState(false);
+  const [meetingSchedule, setMeetingSchedule] = useState<DashboardMeetingItem[]>([]);
+  const [meetingFilter, setMeetingFilter] = useState<"today" | "month" | "year">("today");
   const [dashboardMetrics, setDashboardMetrics] = useState({
     ticketsTotal: 0,
     ticketsOpen: 0,
@@ -253,6 +291,34 @@ const EmployeeDashboard = () => {
   }, [user]);
 
   useEffect(() => {
+    const fetchMeetingSchedule = async () => {
+      if (!user || user.role !== "STARTUP") {
+        setMeetingSchedule([]);
+        return;
+      }
+      try {
+        const res = await meetingsAPI.list({ upcoming: true, period: "year" });
+        const rows = Array.isArray(res?.data?.data) ? res.data.data : [];
+        setMeetingSchedule(
+          rows.map((m: any) => ({
+            _id: String(m?._id),
+            title: String(m?.title || "Meeting"),
+            start: m?.start,
+            end: m?.end,
+            description: m?.description || "",
+            meetingType: String(m?.meetingType || "OFFLINE").toUpperCase() === "ONLINE" ? "ONLINE" : "OFFLINE",
+            meetingLink: m?.meetingLink || "",
+          }))
+        );
+      } catch {
+        setMeetingSchedule([]);
+      }
+    };
+
+    fetchMeetingSchedule();
+  }, [user]);
+
+  useEffect(() => {
     if (!user || user.role !== "STARTUP") {
       setStartupExperts([]);
       setStartupExpertsError("");
@@ -379,6 +445,150 @@ const EmployeeDashboard = () => {
     return `${days} jours d'activite`;
   }, [startupCreatedDate]);
 
+  const getEntityId = (value: any) => String(value?._id || value?.id || value?.userId || value || "");
+
+  const getNotificationUserName = (u?: DashboardNotificationUser) => {
+    if (!u) return "Unknown";
+    const fullName = `${u.firstName || ""} ${u.lastName || ""}`.trim();
+    return fullName || u.email || "Unknown";
+  };
+
+  const getNotificationAvatar = (u?: DashboardNotificationUser) => {
+    const raw = String(u?.avatar || u?.profilePhoto || "").trim();
+    if (!raw) return "/assets/img/users/user-49.jpg";
+    if (raw.startsWith("/data:image/")) return raw.slice(1);
+    if (raw.startsWith("data:")) return raw;
+    if (raw.startsWith("http://") || raw.startsWith("https://")) return raw;
+    if (raw.startsWith("/uploads/")) return `${API_BASE_URL}${raw}`;
+    if (raw.startsWith("uploads/")) return `${API_BASE_URL}/${raw}`;
+    if (raw.startsWith("/assets/")) return raw;
+    if (raw.startsWith("assets/")) return `/${raw}`;
+    return raw;
+  };
+
+  const formatDashboardNotificationTime = (dateLike?: string) => {
+    if (!dateLike) return "";
+    const parsed = new Date(dateLike);
+    if (Number.isNaN(parsed.getTime())) return "";
+    const diffMins = Math.floor((Date.now() - parsed.getTime()) / 60000);
+    if (diffMins <= 0) return "Just now";
+    if (diffMins < 60) return `${diffMins} min ago`;
+    const diffHours = Math.floor(diffMins / 60);
+    if (diffHours < 24) return `${diffHours}h ago`;
+    return parsed.toLocaleString("fr-FR", {
+      day: "2-digit",
+      month: "short",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  };
+
+  useEffect(() => {
+    const fetchDashboardNotifications = async () => {
+      if (!isStartupSession || !user) {
+        setDashboardNotifications([]);
+        return;
+      }
+
+      const currentUserId = String((user as any)?.id || (user as any)?._id || (user as any)?.userId || "");
+      if (!currentUserId) {
+        setDashboardNotifications([]);
+        return;
+      }
+
+      setLoadingDashboardNotifications(true);
+      try {
+        const token = localStorage.getItem("token");
+        if (!token) {
+          setDashboardNotifications([]);
+          return;
+        }
+
+        const headers = {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        };
+
+        const [inboxRes, conversationsRes, callHistoryRes] = await Promise.all([
+          emailsAPI.getInbox(""),
+          fetch(`${API_BASE_URL}/api/chat/conversations`, { headers }),
+          fetch(`${API_BASE_URL}/api/voice-calls/history?page=1&limit=20`, { headers }),
+        ]);
+
+        const inboxList = Array.isArray(inboxRes?.data?.data) ? inboxRes.data.data : [];
+        const emailNotifs: DashboardNotificationItem[] = inboxList.map((mail: any) => ({
+          _id: `email-${mail?._id}`,
+          source: "email",
+          user: mail?.senderId,
+          title: `${getNotificationUserName(mail?.senderId)} sent you an email`,
+          description: mail?.subject || "(No Subject)",
+          createdAt: mail?.createdAt,
+          isRead: !!mail?.isRead,
+          targetRoute: routes.email,
+        }));
+
+        const convJson = conversationsRes.ok ? await conversationsRes.json() : { data: [] };
+        const conversations = Array.isArray(convJson?.data) ? convJson.data : [];
+        const chatNotifs: DashboardNotificationItem[] = conversations
+          .map((conv: any) => {
+            const unreadCountEntry = Array.isArray(conv?.unreadCount)
+              ? conv.unreadCount.find((entry: any) => getEntityId(entry?.userId) === currentUserId)
+              : null;
+            const unreadMessages = Number(unreadCountEntry?.count || 0);
+            if (unreadMessages <= 0) return null;
+            const otherParticipant = (conv?.participants || [])
+              .map((p: any) => p?.userId)
+              .find((u: any) => getEntityId(u) !== currentUserId);
+            return {
+              _id: `chat-${conv?._id}`,
+              source: "chat" as const,
+              user: otherParticipant,
+              title: `${getNotificationUserName(otherParticipant)} sent you ${unreadMessages} message${
+                unreadMessages > 1 ? "s" : ""
+              }`,
+              description: conv?.lastMessage?.content || "New message received",
+              createdAt: conv?.lastMessage?.timestamp || conv?.updatedAt,
+              isRead: false,
+              targetRoute: routes.chat,
+            };
+          })
+          .filter(Boolean) as DashboardNotificationItem[];
+
+        const historyJson = callHistoryRes.ok ? await callHistoryRes.json() : { data: { calls: [] } };
+        const historyCalls = Array.isArray(historyJson?.data?.calls) ? historyJson.data.calls : [];
+        const callNotifs: DashboardNotificationItem[] = historyCalls
+          .filter((call: any) => getEntityId(call?.receiverId) === currentUserId)
+          .map((call: any) => {
+            const caller = call?.callerId;
+            const status = String(call?.status || "").toLowerCase();
+            const titlePrefix = status === "missed" ? "Missed call from" : "Incoming call from";
+            return {
+              _id: `call-${call?._id}`,
+              source: "call" as const,
+              user: caller,
+              title: `${titlePrefix} ${getNotificationUserName(caller)}`,
+              description: call?.callType === "video" ? "Video call" : "Voice call",
+              createdAt: call?.createdAt,
+              isRead: status !== "missed",
+              targetRoute: routes.callHistory,
+            };
+          });
+
+        const merged = [...emailNotifs, ...chatNotifs, ...callNotifs]
+          .sort((a, b) => new Date(b?.createdAt || 0).getTime() - new Date(a?.createdAt || 0).getTime())
+          .slice(0, 5);
+
+        setDashboardNotifications(merged);
+      } catch {
+        setDashboardNotifications([]);
+      } finally {
+        setLoadingDashboardNotifications(false);
+      }
+    };
+
+    fetchDashboardNotifications();
+  }, [isStartupSession, routes.callHistory, routes.chat, routes.email, user]);
+
   const startupHealthSignals = useMemo(() => {
     const ticketsTotal = Math.max(1, dashboardMetrics.ticketsTotal);
     const resolvedRate = Math.round((dashboardMetrics.ticketsResolved / ticketsTotal) * 100);
@@ -495,6 +705,40 @@ const EmployeeDashboard = () => {
       },
     ];
   }, [dashboardMetrics, nextPublishedEvent, profileCompletion]);
+
+  const filteredMeetingSchedule = useMemo(() => {
+    const now = new Date();
+    const isSameDay = (d: Date) =>
+      d.getFullYear() === now.getFullYear() &&
+      d.getMonth() === now.getMonth() &&
+      d.getDate() === now.getDate();
+
+    const filtered = meetingSchedule.filter((meeting) => {
+      const d = meeting?.start ? new Date(meeting.start) : null;
+      if (!d || Number.isNaN(d.getTime())) return false;
+      if (meetingFilter === "today") return isSameDay(d);
+      if (meetingFilter === "month") {
+        return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth();
+      }
+      return d.getFullYear() === now.getFullYear();
+    });
+
+    return filtered
+      .sort((a, b) => new Date(a.start || 0).getTime() - new Date(b.start || 0).getTime())
+      .slice(0, 6);
+  }, [meetingFilter, meetingSchedule]);
+
+  const formatMeetingTime = (dateLike?: string) => {
+    if (!dateLike) return "";
+    const d = new Date(dateLike);
+    if (Number.isNaN(d.getTime())) return "";
+    return d.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" });
+  };
+
+  const meetingDotClass = (idx: number) => {
+    const colors = ["text-primary", "text-secondary", "text-warning", "text-success", "text-info", "text-danger"];
+    return colors[idx % colors.length];
+  };
 
   //New Chart
   const leavesChart = useMemo<any>(() => {
@@ -2653,111 +2897,48 @@ const EmployeeDashboard = () => {
                   <div className="d-flex align-items-center justify-content-between flex-wrap">
                     <h5>Notifications</h5>
                     <div>
-                      <Link to="#" className="btn btn-light btn-sm">
+                      <Link to={routes.notifications} className="btn btn-light btn-sm">
                         View All
                       </Link>
                     </div>
                   </div>
                 </div>
                 <div className="card-body">
-                  <div className="d-flex align-items-start mb-4">
-                    <Link to="#" className="avatar flex-shrink-0">
-                      <ImageWithBasePath
-                        src="assets/img/users/user-27.jpg"
-                        className="rounded-circle border border-2"
-                        alt="img"
-                      />
-                    </Link>
-                    <div className="ms-2">
-                      <h6 className="fs-14 fw-medium text-truncate mb-1">
-                        Lex Murphy requested access to UNIX{" "}
-                      </h6>
-                      <p className="fs-13 mb-2">Today at 9:42 AM</p>
-                      <div className="d-flex align-items-center">
-                        <Link
-                          to="#"
-                          className="avatar avatar-sm border flex-shrink-0 me-2"
-                        >
-                          <ImageWithBasePath
-                            src="assets/img/social/pdf-icon.svg"
-                            className="w-auto h-auto"
-                            alt="Img"
+                  {loadingDashboardNotifications ? (
+                    <p className="text-muted mb-0">Loading notifications...</p>
+                  ) : dashboardNotifications.length === 0 ? (
+                    <p className="text-muted mb-0">No notifications yet.</p>
+                  ) : (
+                    dashboardNotifications.map((item, idx) => (
+                      <div
+                        className={`d-flex align-items-start ${idx < dashboardNotifications.length - 1 ? "mb-4" : ""}`}
+                        key={item._id}
+                      >
+                        <Link to={item.targetRoute} className="avatar flex-shrink-0">
+                          <img
+                            src={getNotificationAvatar(item.user)}
+                            className="rounded-circle border border-2"
+                            alt="notification-user"
+                            onError={(ev) => {
+                              ev.currentTarget.src = "/assets/img/users/user-49.jpg";
+                            }}
                           />
                         </Link>
-                        <h6 className="fw-normal">
-                          <Link to="#">EY_review.pdf</Link>
-                        </h6>
+                        <div className="ms-2 flex-fill">
+                          <div className="d-flex align-items-start justify-content-between gap-2">
+                            <h6 className="fs-14 fw-medium text-truncate mb-1">{item.title}</h6>
+                            {!item.isRead && (
+                              <span className="badge bg-primary-transparent text-primary flex-shrink-0">New</span>
+                            )}
+                          </div>
+                          <p className="fs-13 mb-1">{formatDashboardNotificationTime(item.createdAt)}</p>
+                          {!!item.description && (
+                            <p className="fs-12 text-muted mb-0 text-truncate">{item.description}</p>
+                          )}
+                        </div>
                       </div>
-                    </div>
-                  </div>
-                  <div className="d-flex align-items-start mb-4">
-                    <Link to="#" className="avatar flex-shrink-0">
-                      <ImageWithBasePath
-                        src="assets/img/users/user-28.jpg"
-                        className="rounded-circle border border-2"
-                        alt="img"
-                      />
-                    </Link>
-                    <div className="ms-2">
-                      <h6 className="fs-14 fw-medium text-truncate mb-1">
-                        Lex Murphy requested access to UNIX{" "}
-                      </h6>
-                      <p className="fs-13 mb-0">Today at 10:00 AM</p>
-                    </div>
-                  </div>
-                  <div className="d-flex align-items-start mb-4">
-                    <Link to="#" className="avatar flex-shrink-0">
-                      <ImageWithBasePath
-                        src="assets/img/users/user-29.jpg"
-                        className="rounded-circle border border-2"
-                        alt="img"
-                      />
-                    </Link>
-                    <div className="ms-2">
-                      <h6 className="fs-14 fw-medium text-truncate mb-1">
-                        Lex Murphy requested access to UNIX{" "}
-                      </h6>
-                      <p className="fs-13 mb-2">Today at 10:50 AM</p>
-                      <div className="d-flex align-items-center">
-                        <Link to="#" className="btn btn-primary btn-sm me-2">
-                          Approve
-                        </Link>
-                        <Link to="#" className="btn btn-outline-primary btn-sm">
-                          Decline
-                        </Link>
-                      </div>
-                    </div>
-                  </div>
-                  <div className="d-flex align-items-start mb-4">
-                    <Link to="#" className="avatar flex-shrink-0">
-                      <ImageWithBasePath
-                        src="assets/img/users/user-30.jpg"
-                        className="rounded-circle border border-2"
-                        alt="img"
-                      />
-                    </Link>
-                    <div className="ms-2">
-                      <h6 className="fs-14 fw-medium text-truncate mb-1">
-                        Lex Murphy requested access to UNIX{" "}
-                      </h6>
-                      <p className="fs-13 mb-0">Today at 12:00 PM</p>
-                    </div>
-                  </div>
-                  <div className="d-flex align-items-start">
-                    <Link to="#" className="avatar flex-shrink-0">
-                      <ImageWithBasePath
-                        src="assets/img/users/user-33.jpg"
-                        className="rounded-circle border border-2"
-                        alt="img"
-                      />
-                    </Link>
-                    <div className="ms-2">
-                      <h6 className="fs-14 fw-medium text-truncate mb-1">
-                        Lex Murphy requested access to UNIX{" "}
-                      </h6>
-                      <p className="fs-13 mb-0">Today at 05:00 PM</p>
-                    </div>
-                  </div>
+                    ))
+                  )}
                 </div>
               </div>
             </div>
@@ -2772,102 +2953,91 @@ const EmployeeDashboard = () => {
                         data-bs-toggle="dropdown"
                       >
                         <i className="ti ti-calendar me-1" />
-                        Today
+                        {meetingFilter === "today" ? "Today" : meetingFilter === "month" ? "This Month" : "This Year"}
                       </Link>
                       <ul className="dropdown-menu  dropdown-menu-end p-3">
                         <li>
-                          <Link
-                            to="#"
+                          <button
+                            type="button"
                             className="dropdown-item rounded-1"
+                            onClick={() => setMeetingFilter("today")}
                           >
                             Today
-                          </Link>
+                          </button>
                         </li>
                         <li>
-                          <Link
-                            to="#"
+                          <button
+                            type="button"
                             className="dropdown-item rounded-1"
+                            onClick={() => setMeetingFilter("month")}
                           >
                             This Month
-                          </Link>
+                          </button>
                         </li>
                         <li>
-                          <Link
-                            to="#"
+                          <button
+                            type="button"
                             className="dropdown-item rounded-1"
+                            onClick={() => setMeetingFilter("year")}
                           >
                             This Year
-                          </Link>
+                          </button>
                         </li>
                       </ul>
                     </div>
                   </div>
                 </div>
                 <div className="card-body schedule-timeline">
-                  <div className="d-flex align-items-start">
-                    <div className="d-flex align-items-center active-time">
-                      <span>09:25 AM</span>
-                      <span>
-                        <i className="ti ti-point-filled text-primary fs-20" />
-                      </span>
+                  {nextEventLoading ? (
+                    <p className="text-muted mb-0">Loading meetings...</p>
+                  ) : filteredMeetingSchedule.length === 0 ? (
+                    <div>
+                      <p className="text-muted mb-2">No meetings for this period.</p>
+                      <Link to={routes.meetingsPlanner} className="btn btn-primary btn-sm">
+                        Plan a meeting
+                      </Link>
                     </div>
-                    <div className="flex-fill ps-3 pb-4 timeline-flow">
-                      <div className="bg-light p-2 rounded">
-                        <p className="fw-medium text-gray-9 mb-1">
-                          Marketing Strategy Presentation
-                        </p>
-                        <span>Marketing</span>
+                  ) : (
+                    <>
+                      {filteredMeetingSchedule.map((meeting, idx) => (
+                        <div className="d-flex align-items-start" key={meeting._id}>
+                          <div className="d-flex align-items-center active-time">
+                            <span>{formatMeetingTime(meeting.start)}</span>
+                            <span>
+                              <i className={`ti ti-point-filled ${meetingDotClass(idx)} fs-20`} />
+                            </span>
+                          </div>
+                          <div
+                            className={`flex-fill ps-3 timeline-flow ${
+                              idx < filteredMeetingSchedule.length - 1 ? "pb-4" : ""
+                            }`}
+                          >
+                            <div className="bg-light p-2 rounded">
+                              <p className="fw-medium text-gray-9 mb-1">{meeting.title}</p>
+                              <div className="d-flex align-items-center justify-content-between gap-2 flex-wrap">
+                                <span>{meeting.meetingType === "ONLINE" ? "Online Meeting" : "Offline Meeting"}</span>
+                                {meeting.meetingLink && (
+                                  <a
+                                    href={meeting.meetingLink}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="btn btn-outline-primary btn-sm"
+                                  >
+                                    Join
+                                  </a>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                      <div className="mt-3">
+                        <Link to={routes.meetingsPlanner} className="btn btn-light btn-sm">
+                          Open meetings planner
+                        </Link>
                       </div>
-                    </div>
-                  </div>
-                  <div className="d-flex align-items-start">
-                    <div className="d-flex align-items-center active-time">
-                      <span>09:20 AM</span>
-                      <span>
-                        <i className="ti ti-point-filled text-secondary fs-20" />
-                      </span>
-                    </div>
-                    <div className="flex-fill ps-3 pb-4 timeline-flow">
-                      <div className="bg-light p-2 rounded">
-                        <p className="fw-medium text-gray-9 mb-1">
-                          Design Review Hospital, doctors Management Project
-                        </p>
-                        <span>Review</span>
-                      </div>
-                    </div>
-                  </div>
-                  <div className="d-flex align-items-start">
-                    <div className="d-flex align-items-center active-time">
-                      <span>09:18 AM</span>
-                      <span>
-                        <i className="ti ti-point-filled text-warning fs-20" />
-                      </span>
-                    </div>
-                    <div className="flex-fill ps-3 pb-4 timeline-flow">
-                      <div className="bg-light p-2 rounded">
-                        <p className="fw-medium text-gray-9 mb-1">
-                          Birthday Celebration of Employee
-                        </p>
-                        <span>Celebration</span>
-                      </div>
-                    </div>
-                  </div>
-                  <div className="d-flex align-items-start">
-                    <div className="d-flex align-items-center active-time">
-                      <span>09:10 AM</span>
-                      <span>
-                        <i className="ti ti-point-filled text-success fs-20" />
-                      </span>
-                    </div>
-                    <div className="flex-fill ps-3 timeline-flow">
-                      <div className="bg-light p-2 rounded">
-                        <p className="fw-medium text-gray-9 mb-1">
-                          Update of Project Flow
-                        </p>
-                        <span>Development</span>
-                      </div>
-                    </div>
-                  </div>
+                    </>
+                  )}
                 </div>
               </div>
             </div>
