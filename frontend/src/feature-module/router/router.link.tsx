@@ -43,6 +43,7 @@ import Error404 from "../pages/error/error-404";
 import Error500 from "../pages/error/error-500";
 import UnderMaintenance from "../pages/underMaintenance";
 import Email from "../application/email";
+import Notifications from "../application/notifications";
 import Chat from "../application/chat";
 import CallHistory from "../application/call/callHistory";
 import FileManager from "../application/fileManager";
@@ -156,7 +157,7 @@ import Videocallss from "../application/call/videocalls";
 import OutgoingCalls from "../application/call/outgingcalls";
 import IncomingCall from "../application/call/incomingcall";
 import Calendars from "../mainMenu/apps/calendar";
-import SocialFeed from "../application/socialfeed";
+import SocialFeed from "../application/socialFeedDynamic";
 import KanbanView from "../application/kanbanView";
 import Todo from "../application/todo/todo";
 import TodoList from "../application/todo/todolist";
@@ -673,6 +674,11 @@ export const publicRoutes = [
   {
     path: routes.email,
     element: <Email />,
+    route: Route,
+  },
+  {
+    path: routes.notifications,
+    element: <Notifications />,
     route: Route,
   },
   {

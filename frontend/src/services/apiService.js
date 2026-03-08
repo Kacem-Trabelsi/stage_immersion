@@ -317,5 +317,57 @@ export const eventsAPI = {
   }
 };
 
+// Internal Emails API
+export const emailsAPI = {
+  getContacts: async () => {
+    try {
+      return await apiClient.get('/api/emails/contacts');
+    } catch (error) {
+      console.error('Get email contacts API error:', error);
+      throw error;
+    }
+  },
+  getInbox: async (search = '') => {
+    try {
+      return await apiClient.get('/api/emails/inbox', { params: { search } });
+    } catch (error) {
+      console.error('Get inbox API error:', error);
+      throw error;
+    }
+  },
+  getSent: async (search = '') => {
+    try {
+      return await apiClient.get('/api/emails/sent', { params: { search } });
+    } catch (error) {
+      console.error('Get sent API error:', error);
+      throw error;
+    }
+  },
+  markAsRead: async (emailId) => {
+    try {
+      return await apiClient.patch(`/api/emails/${emailId}/read`);
+    } catch (error) {
+      console.error('Mark email as read API error:', error);
+      throw error;
+    }
+  },
+  send: async (payload) => {
+    try {
+      return await apiClient.post('/api/emails/send', payload);
+    } catch (error) {
+      console.error('Send email API error:', error);
+      throw error;
+    }
+  },
+  reply: async (emailId, payload) => {
+    try {
+      return await apiClient.post(`/api/emails/${emailId}/reply`, payload);
+    } catch (error) {
+      console.error('Reply email API error:', error);
+      throw error;
+    }
+  }
+};
+
 // ✅ Export the axios instance for direct use if needed
 export default apiClient;

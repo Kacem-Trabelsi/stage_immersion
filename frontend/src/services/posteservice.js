@@ -120,6 +120,33 @@ export const toggleCommentLike = async (postId, commentId) => {
   }
 };
 
+export const addReply = async (postId, commentId, replyData) => {
+  try {
+    const response = await axiosInstance.post(`/${postId}/comment/${commentId}/reply`, replyData);
+    return response.data;
+  } catch (error) {
+    throw error.response?.data || { message: 'Failed to add reply' };
+  }
+};
+
+export const deleteReply = async (postId, commentId, replyId) => {
+  try {
+    const response = await axiosInstance.delete(`/${postId}/comment/${commentId}/reply/${replyId}`);
+    return response.data;
+  } catch (error) {
+    throw error.response?.data || { message: 'Failed to delete reply' };
+  }
+};
+
+export const toggleReplyLike = async (postId, commentId, replyId) => {
+  try {
+    const response = await axiosInstance.post(`/${postId}/comment/${commentId}/reply/${replyId}/like`);
+    return response.data;
+  } catch (error) {
+    throw error.response?.data || { message: 'Failed to toggle reply like' };
+  }
+};
+
 export const togglePinPost = async (postId) => {
   try {
     const response = await axiosInstance.post(`/${postId}/pin`);

@@ -14,7 +14,39 @@ import { HorizontalSidebarData } from '../../data/json/horizontalSidebar'
 import { searchCompanies } from "../../../services/searchService";
 import { useAuth } from "../../../contexts/AuthContext";
 import companyProfileService from "../../../services/companyProfileService";
+import { API_BASE_URL, emailsAPI } from "../../../services/apiService";
 import "./search.css";
+
+type NotificationUser = {
+  _id?: string;
+  firstName?: string;
+  lastName?: string;
+  email?: string;
+  avatar?: string;
+  profilePhoto?: string;
+};
+
+type StartupProfileMeta = {
+  userId: string;
+  companyName?: string;
+  logo?: string;
+};
+
+type NotificationSource = "email" | "chat" | "call";
+
+type NotificationItem = {
+  _id: string;
+  source: NotificationSource;
+  user?: NotificationUser;
+  title: string;
+  description?: string;
+  createdAt?: string;
+  isRead: boolean;
+  targetRoute: string;
+  emailId?: string;
+  conversationId?: string;
+  callId?: string;
+};
 
 const Header = () => {
   const Location = useLocation();
@@ -64,6 +96,16 @@ const Header = () => {
   const [showSearchResults, setShowSearchResults] = useState(false);
   const [isSearching, setIsSearching] = useState(false);
   const searchRef = useRef<HTMLDivElement>(null);
+  const [notificationItems, setNotificationItems] = useState<NotificationItem[]>([]);
+  const [unreadNotificationsCount, setUnreadNotificationsCount] = useState(0);
+  const [loadingNotifications, setLoadingNotifications] = useState(false);
+  const [notificationsError, setNotificationsError] = useState("");
+  const [seenCallIds, setSeenCallIds] = useState<string[]>([]);
+  const [startupProfiles, setStartupProfiles] = useState<Record<string, StartupProfileMeta>>({});
+  const isNotificationsEnabled =
+    user?.role === "STARTUP" || user?.role === "EXPERT" || user?.role === "S2T";
+  const currentUserId = String((user as any)?.id || (user as any)?._id || (user as any)?.userId || "");
+  const seenCallsStorageKey = `seen_call_notifications_${currentUserId}`;
 
   // Handle search input changes
   const handleSearchChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -264,6 +306,310 @@ const Header = () => {
       return fullPath;
     }
   };
+
+  const getEntityId = (value: any) =>
+    String(value?._id || value?.id || value?.userId || value || "");
+
+  const getStartupMetaForUser = (u?: NotificationUser) => {
+    const id = getEntityId(u);
+    if (!id) return null;
+    return startupProfiles[id] || null;
+  };
+
+  const getNotificationDisplayName = (u?: NotificationUser) => {
+    const startupMeta = getStartupMetaForUser(u);
+    if (startupMeta?.companyName) return startupMeta.companyName;
+    if (!u) return "Unknown";
+    const fullName = `${u.firstName || ""} ${u.lastName || ""}`.trim();
+    return fullName || u.email || "Unknown";
+  };
+
+  const getNotificationAvatar = (u?: NotificationUser) => {
+    const startupMeta = getStartupMetaForUser(u);
+    const raw = String(startupMeta?.logo || u?.avatar || u?.profilePhoto || "").trim();
+    if (!raw) return "/assets/img/users/user-49.jpg";
+    if (raw.startsWith("/data:image/")) return raw.slice(1);
+    if (raw.startsWith("data:")) return raw;
+    if (raw.startsWith("http://") || raw.startsWith("https://")) return encodeURI(raw);
+    if (raw.startsWith("/uploads/")) return encodeURI(`${API_BASE_URL}${raw}`);
+    if (raw.startsWith("uploads/")) return encodeURI(`${API_BASE_URL}/${raw}`);
+    if (raw.startsWith("assets/")) return `/${raw}`;
+    return encodeURI(raw);
+  };
+
+  const formatNotificationTime = (dateLike?: string) => {
+    if (!dateLike) return "";
+    const parsed = new Date(dateLike);
+    const time = parsed.getTime();
+    if (Number.isNaN(time)) return "";
+    const diffMs = Date.now() - time;
+    const diffMins = Math.floor(diffMs / 60000);
+    if (diffMins <= 0) return "Just now";
+    if (diffMins < 60) return `${diffMins} min ago`;
+    const diffHours = Math.floor(diffMins / 60);
+    if (diffHours < 24) return `${diffHours}h ago`;
+    return parsed.toLocaleDateString("fr-FR", {
+      day: "2-digit",
+      month: "short",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  };
+
+  const resolveObjectId = (value: any) => String(value?._id || value?.id || value?.userId || value || "");
+
+  const loadStartupProfiles = async () => {
+    try {
+      const res = await companyProfileService.getAllCompanyProfiles();
+      const list = Array.isArray(res?.data) ? res.data : [];
+      const nextMap: Record<string, StartupProfileMeta> = {};
+      list.forEach((p: any) => {
+        const uid = getEntityId(p?.userId);
+        if (!uid) return;
+        nextMap[uid] = {
+          userId: uid,
+          companyName: p?.companyName || "",
+          logo: p?.logo || "",
+        };
+      });
+      setStartupProfiles(nextMap);
+    } catch {
+      setStartupProfiles({});
+    }
+  };
+
+  const loadSeenCalls = () => {
+    try {
+      if (!currentUserId) {
+        setSeenCallIds([]);
+        return;
+      }
+      const raw = localStorage.getItem(seenCallsStorageKey);
+      const parsed = raw ? JSON.parse(raw) : [];
+      setSeenCallIds(Array.isArray(parsed) ? parsed.map((v) => String(v)) : []);
+    } catch {
+      setSeenCallIds([]);
+    }
+  };
+
+  const persistSeenCalls = (ids: string[]) => {
+    setSeenCallIds(ids);
+    if (!currentUserId) return;
+    localStorage.setItem(seenCallsStorageKey, JSON.stringify(ids));
+  };
+
+  const markCallSeen = (callId?: string) => {
+    if (!callId) return;
+    if (seenCallIds.includes(callId)) return;
+    persistSeenCalls([...seenCallIds, callId]);
+  };
+
+  const markConversationAsRead = async (conversationId?: string) => {
+    if (!conversationId) return;
+    try {
+      const token = localStorage.getItem("token");
+      if (!token) return;
+      await fetch(`${API_BASE_URL}/api/chat/conversations/${conversationId}/read`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+      });
+    } catch {
+      // silent
+    }
+  };
+
+  const loadNotifications = async () => {
+    if (!isNotificationsEnabled || !currentUserId) {
+      setNotificationItems([]);
+      setUnreadNotificationsCount(0);
+      return;
+    }
+    setLoadingNotifications(true);
+    setNotificationsError("");
+    try {
+      const token = localStorage.getItem("token");
+      if (!token) {
+        setNotificationItems([]);
+        setUnreadNotificationsCount(0);
+        return;
+      }
+
+      const headers = {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      };
+
+      const [inboxRes, conversationsRes, callHistoryRes, activeCallsRes] = await Promise.all([
+        emailsAPI.getInbox(""),
+        fetch(`${API_BASE_URL}/api/chat/conversations`, { headers }),
+        fetch(`${API_BASE_URL}/api/voice-calls/history?page=1&limit=20`, { headers }),
+        fetch(`${API_BASE_URL}/api/voice-calls/active`, { headers }),
+      ]);
+
+      const inboxList = Array.isArray(inboxRes?.data?.data) ? inboxRes.data.data : [];
+      const emailNotifs: NotificationItem[] = inboxList.map((mail: any) => ({
+        _id: `email-${mail._id}`,
+        source: "email",
+        user: mail?.senderId,
+        title: `${getNotificationDisplayName(mail?.senderId)} sent you an email`,
+        description: mail?.subject || "(No Subject)",
+        createdAt: mail?.createdAt,
+        isRead: !!mail?.isRead,
+        targetRoute: routes.email,
+        emailId: mail?._id,
+      }));
+
+      const convJson = conversationsRes.ok ? await conversationsRes.json() : { data: [] };
+      const conversations = Array.isArray(convJson?.data) ? convJson.data : [];
+      const chatNotifs: NotificationItem[] = conversations
+        .map((conv: any) => {
+          const unreadCountEntry = Array.isArray(conv?.unreadCount)
+            ? conv.unreadCount.find((entry: any) => resolveObjectId(entry?.userId) === currentUserId)
+            : null;
+          const unreadMessages = Number(unreadCountEntry?.count || 0);
+          if (unreadMessages <= 0) return null;
+          const otherParticipant = (conv?.participants || [])
+            .map((p: any) => p?.userId)
+            .find((u: any) => resolveObjectId(u) !== currentUserId);
+          const senderName = getNotificationDisplayName(otherParticipant);
+          return {
+            _id: `chat-${conv?._id}`,
+            source: "chat" as const,
+            user: otherParticipant,
+            title: `${senderName} sent you ${unreadMessages} message${unreadMessages > 1 ? "s" : ""}`,
+            description: conv?.lastMessage?.content || "New message received",
+            createdAt: conv?.lastMessage?.timestamp || conv?.updatedAt,
+            isRead: false,
+            targetRoute: routes.chat,
+            conversationId: conv?._id,
+          };
+        })
+        .filter(Boolean) as NotificationItem[];
+
+      const historyJson = callHistoryRes.ok ? await callHistoryRes.json() : { data: { calls: [] } };
+      const historyCalls = Array.isArray(historyJson?.data?.calls) ? historyJson.data.calls : [];
+      const historyCallNotifs: NotificationItem[] = historyCalls
+        .filter((call: any) => resolveObjectId(call?.receiverId) === currentUserId)
+        .map((call: any) => {
+          const caller = call?.callerId;
+          const status = String(call?.status || "").toLowerCase();
+          const statusLabel = status === "missed" ? "Missed incoming call" : "Incoming call";
+          return {
+            _id: `call-history-${call?._id}`,
+            source: "call" as const,
+            user: caller,
+            title: `${statusLabel} from ${getNotificationDisplayName(caller)}`,
+            description: call?.callType === "video" ? "Video call" : "Voice call",
+            createdAt: call?.createdAt,
+            isRead: seenCallIds.includes(String(call?._id)),
+            targetRoute: routes.chat,
+            callId: call?._id,
+          };
+        });
+
+      const activeJson = activeCallsRes.ok ? await activeCallsRes.json() : { data: [] };
+      const activeCalls = Array.isArray(activeJson?.data) ? activeJson.data : [];
+      const activeIncomingNotifs: NotificationItem[] = activeCalls
+        .filter(
+          (call: any) =>
+            resolveObjectId(call?.receiverId) === currentUserId &&
+            ["initiated", "ringing"].includes(String(call?.status || "").toLowerCase())
+        )
+        .map((call: any) => ({
+          _id: `call-active-${call?._id}`,
+          source: "call" as const,
+          user: call?.callerId,
+          title: `Incoming call from ${getNotificationDisplayName(call?.callerId)}`,
+          description: call?.callType === "video" ? "Video call is ringing" : "Voice call is ringing",
+          createdAt: call?.createdAt,
+          isRead: seenCallIds.includes(String(call?._id)),
+          targetRoute: routes.chat,
+          callId: call?._id,
+        }));
+
+      const combined = [...emailNotifs, ...chatNotifs, ...historyCallNotifs, ...activeIncomingNotifs]
+        .sort((a, b) => {
+          const aTime = new Date(a?.createdAt || 0).getTime();
+          const bTime = new Date(b?.createdAt || 0).getTime();
+          return bTime - aTime;
+        });
+
+      setNotificationItems(combined.slice(0, 8));
+      setUnreadNotificationsCount(combined.filter((n) => !n.isRead).length);
+    } catch (error: any) {
+      setNotificationItems([]);
+      setUnreadNotificationsCount(0);
+      setNotificationsError(
+        error?.response?.data?.message || "Unable to load notifications"
+      );
+    } finally {
+      setLoadingNotifications(false);
+    }
+  };
+
+  const markNotificationAsRead = async (notification?: NotificationItem) => {
+    if (!notification) return;
+    try {
+      if (notification.source === "email" && notification.emailId) {
+        await emailsAPI.markAsRead(notification.emailId);
+      } else if (notification.source === "chat" && notification.conversationId) {
+        await markConversationAsRead(notification.conversationId);
+      } else if (notification.source === "call" && notification.callId) {
+        markCallSeen(notification.callId);
+      }
+
+      setNotificationItems((prev) =>
+        prev.map((item) => (item._id === notification._id ? { ...item, isRead: true } : item))
+      );
+      setUnreadNotificationsCount((prev) => Math.max(0, prev - 1));
+    } catch {
+      // silent
+    }
+  };
+
+  const markAllNotificationsAsRead = async () => {
+    const unreadItems = notificationItems.filter((item) => !item?.isRead);
+    if (!unreadItems.length) return;
+    try {
+      await Promise.all(
+        unreadItems.map(async (item) => {
+          if (item.source === "email" && item.emailId) {
+            await emailsAPI.markAsRead(item.emailId);
+            return;
+          }
+          if (item.source === "chat" && item.conversationId) {
+            await markConversationAsRead(item.conversationId);
+            return;
+          }
+          if (item.source === "call" && item.callId) {
+            markCallSeen(item.callId);
+          }
+        })
+      );
+      setNotificationItems((prev) => prev.map((item) => ({ ...item, isRead: true })));
+      setUnreadNotificationsCount(0);
+      loadNotifications();
+    } catch {
+      // silent
+    }
+  };
+
+  useEffect(() => {
+    loadSeenCalls();
+  }, [currentUserId]);
+
+  useEffect(() => {
+    if (!isNotificationsEnabled) return;
+    loadStartupProfiles();
+    loadNotifications();
+    const intervalId = window.setInterval(() => {
+      loadNotifications();
+    }, 15000);
+    return () => window.clearInterval(intervalId);
+  }, [isNotificationsEnabled, currentUserId, seenCallIds.length]);
 
   const [isFullscreen, setIsFullscreen] = useState(false);
   const displayName =
@@ -554,14 +900,28 @@ const Header = () => {
 								<Link to="#" className="btn btn-menubar position-relative me-1" id="notification_popup"
 									data-bs-toggle="dropdown">
 									<i className="ti ti-bell"></i>
-									<span className="notification-status-dot"></span>
+									{unreadNotificationsCount > 0 && <span className="notification-status-dot"></span>}
+									{unreadNotificationsCount > 0 && (
+										<span className="badge bg-danger rounded-pill d-flex align-items-center justify-content-center header-badge">
+											{unreadNotificationsCount > 9 ? "9+" : unreadNotificationsCount}
+										</span>
+									)}
 								</Link>
 								<div className="dropdown-menu dropdown-menu-end notification-dropdown p-4">
 									<div
 										className="d-flex align-items-center justify-content-between border-bottom p-0 pb-3 mb-3">
-										<h4 className="notification-title">Notifications (2)</h4>
+										<h4 className="notification-title">Notifications ({unreadNotificationsCount})</h4>
 										<div className="d-flex align-items-center">
-											<Link to="#" className="text-primary fs-15 me-3 lh-1">Mark all as read</Link>
+											<Link
+												to="#"
+												className="text-primary fs-15 me-3 lh-1"
+												onClick={(e) => {
+													e.preventDefault();
+													markAllNotificationsAsRead();
+												}}
+											>
+												Mark all as read
+											</Link>
 											<div className="dropdown">
 												<Link to="#" className="bg-white dropdown-toggle"
 													data-bs-toggle="dropdown">
@@ -589,74 +949,76 @@ const Header = () => {
 									</div>
 									<div className="noti-content">
 										<div className="d-flex flex-column">
-											<div className="border-bottom mb-3 pb-3">
-												<Link to={routes.activity}>
-													<div className="d-flex">
-														<span className="avatar avatar-lg me-2 flex-shrink-0">
-															<ImageWithBasePath src="assets/img/profiles/avatar-27.jpg" alt="Profile"/>
-														</span>
-														<div className="flex-grow-1">
-															<p className="mb-1"><span
-																	className="text-dark fw-semibold">Shawn</span>
-																performance in Math is below the threshold.</p>
-															<span>Just Now</span>
-														</div>
+											{loadingNotifications && (
+												<div className="border-0 mb-3 pb-0">
+													<p className="text-muted mb-0">Loading notifications...</p>
+												</div>
+											)}
+											{!loadingNotifications && notificationsError && (
+												<div className="border-0 mb-3 pb-0">
+													<p className="text-danger mb-0">{notificationsError}</p>
+												</div>
+											)}
+											{!loadingNotifications &&
+												!notificationsError &&
+												notificationItems.length === 0 && (
+													<div className="border-0 mb-3 pb-0">
+														<p className="text-muted mb-0">No notifications.</p>
 													</div>
-												</Link>
-											</div>
-											<div className="border-bottom mb-3 pb-3">
-												<Link to={routes.activity} className="pb-0">
-													<div className="d-flex">
-														<span className="avatar avatar-lg me-2 flex-shrink-0">
-															<ImageWithBasePath src="assets/img/profiles/avatar-23.jpg" alt="Profile"/>
-														</span>
-														<div className="flex-grow-1">
-															<p className="mb-1"><span
-																	className="text-dark fw-semibold">Sylvia</span> added
-																appointment on 02:00 PM</p>
-															<span>10 mins ago</span>
-															<div
-																className="d-flex justify-content-start align-items-center mt-1">
-																<span className="btn btn-light btn-sm me-2">Deny</span>
-																<span className="btn btn-primary btn-sm">Approve</span>
+												)}
+											{!loadingNotifications &&
+												!notificationsError &&
+												notificationItems.slice(0, 4).map((item, index) => (
+													<div
+														className={`${index < Math.min(notificationItems.length, 4) - 1 ? "border-bottom mb-3 pb-3" : "border-0 mb-3 pb-0"}`}
+														key={item._id}
+													>
+														<Link
+															to={item.targetRoute}
+															onClick={() => {
+																if (!item?.isRead) {
+																	markNotificationAsRead(item);
+																}
+															}}
+														>
+															<div className="d-flex">
+																<span className="avatar avatar-lg me-2 flex-shrink-0">
+																	<img
+																		src={getNotificationAvatar(item?.user)}
+																		alt="Profile"
+																		className="rounded-circle w-100 h-100 object-fit-cover"
+																		onError={(e) => {
+																			e.currentTarget.src = "/assets/img/users/user-49.jpg";
+																		}}
+																	/>
+																</span>
+																<div className="flex-grow-1">
+																	<p className="mb-1">
+																		<span className="text-dark fw-semibold">
+																			{item.source === "email"
+																				? "Email"
+																				: item.source === "chat"
+																				? "Message"
+																				: "Call"}
+																		</span>{" "}
+																		{item.title}
+																	</p>
+																	{item.description && (
+																		<p className="mb-1 text-muted text-truncate" style={{ maxWidth: 240 }}>
+																			{item.description}
+																		</p>
+																	)}
+																	<span>{formatNotificationTime(item?.createdAt)}</span>
+																</div>
 															</div>
-														</div>
+														</Link>
 													</div>
-												</Link>
-											</div>
-											<div className="border-bottom mb-3 pb-3">
-												<Link to={routes.activity}>
-													<div className="d-flex">
-														<span className="avatar avatar-lg me-2 flex-shrink-0">
-															<ImageWithBasePath src="assets/img/profiles/avatar-25.jpg" alt="Profile"/>
-														</span>
-														<div className="flex-grow-1">
-															<p className="mb-1">New student record <span className="text-dark fw-semibold"> George</span> 
-																is created by <span className="text-dark fw-semibold">Teressa</span>
-															</p>
-															<span>2 hrs ago</span>
-														</div>
-													</div>
-												</Link>
-											</div>
-											<div className="border-0 mb-3 pb-0">
-												<Link to={routes.activity}>
-													<div className="d-flex">
-														<span className="avatar avatar-lg me-2 flex-shrink-0">
-															<ImageWithBasePath src="assets/img/profiles/avatar-01.jpg" alt="Profile"/>
-														</span>
-														<div className="flex-grow-1">
-															<p className="mb-1">A new teacher record for <span className="text-dark fw-semibold">Elisa</span> </p>
-															<span>09:45 AM</span>
-														</div>
-													</div>
-												</Link>
-											</div>
+												))}
 										</div>
 									</div>
 									<div className="d-flex p-0">
 										<Link to="#" className="btn btn-light w-100 me-2">Cancel</Link>
-										<Link to={routes.activity} className="btn btn-primary w-100">View All</Link>
+										<Link to={routes.notifications} className="btn btn-primary w-100">View All</Link>
 									</div>
 								</div>
 							</div>

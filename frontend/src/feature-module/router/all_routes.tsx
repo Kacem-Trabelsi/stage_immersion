@@ -18,6 +18,7 @@ export const all_routes = {
   todo: "/application/todo",
   TodoList: "/application/todo-list",
   email: "/application/email",
+  notifications: "/application/notifications",
   EmailReply: "/application/email-reply",
   audioCall: "/application/audio-call",
   fileManager: "/application/file-manager",

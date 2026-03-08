@@ -59,6 +59,9 @@ app.use(cors({
 
 app.use(express.json({ limit: '10mb' }));
 
+// Upload routes use multer internally; mount before express-fileupload to avoid multipart conflicts
+app.use('/api/uploads', require('./routes/uploadRoutes'));
+
 // Configure file upload middleware
 app.use(fileUpload({
   limits: { fileSize: 5 * 1024 * 1024 }, // 5MB max file size
@@ -83,6 +86,7 @@ app.use('/api/events', require('./routes/events'));
 app.use('/api/notes', require('./routes/notes'));
 app.use('/api/obstacles', require('./routes/obstacles'));
 app.use('/api/tickets', require('./routes/tickets'));
+app.use('/api/emails', require('./routes/emails'));
 
 
 // 📝 Request Logging Middleware

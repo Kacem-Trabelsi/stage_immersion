@@ -1,5 +1,26 @@
 const mongoose = require('mongoose');
 
+const replySchema = new mongoose.Schema(
+  {
+    user: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    text: { type: String, default: '' },
+    createdAt: { type: Date, default: Date.now },
+    likes: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }]
+  },
+  { _id: true }
+);
+
+const commentSchema = new mongoose.Schema(
+  {
+    user: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    text: { type: String, default: '' },
+    createdAt: { type: Date, default: Date.now },
+    likes: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
+    replies: [replySchema]
+  },
+  { _id: true }
+);
+
 const postSchema = new mongoose.Schema({
   author: { 
     type: mongoose.Schema.Types.ObjectId, 
@@ -43,12 +64,7 @@ const postSchema = new mongoose.Schema({
   tags: [{ type: String }], // For better searchability
   likes: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
   views: { type: Number, default: 0 },
-  comments: [{
-    user: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
-    text: String,
-    createdAt: { type: Date, default: Date.now },
-    likes: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }]
-  }],
+  comments: [commentSchema],
   isPinned: { type: Boolean, default: false },
   isPrivate: { type: Boolean, default: false },
   targetAudience: [{

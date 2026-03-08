@@ -1,8 +1,43 @@
 const Post = require('../models/Post');
 
+const ALLOWED_SOCIAL_ROLES = new Set(['STARTUP', 'EXPERT', 'S2T']);
+
+const canUseSocialFeed = (req) => {
+  const role = String(req?.user?.role || '').toUpperCase();
+  return ALLOWED_SOCIAL_ROLES.has(role);
+};
+
+const getRequestUserId = (req) => String(req?.user?.userId || req?.user?._id || req?.user?.id || '');
+const isAdminUser = (req) => String(req?.user?.role || '').toUpperCase() === 'ADMIN';
+
+const rejectForbiddenRole = (res) =>
+  res.status(403).json({
+    success: false,
+    message: 'Only STARTUP, EXPERT and S2T can use social feed actions'
+  });
+
+const deriveTitleFromContent = (title, content) => {
+  const cleanTitle = String(title || '').trim();
+  if (cleanTitle) return cleanTitle;
+  const cleanContent = String(content || '').trim();
+  if (!cleanContent) return 'Untitled Post';
+  return cleanContent.length > 80 ? `${cleanContent.slice(0, 80)}...` : cleanContent;
+};
+
+const populatePostQuery = (query) =>
+  query
+    .populate('author', 'username firstName lastName role avatar profilePhoto')
+    .populate('comments.user', 'username firstName lastName role avatar profilePhoto')
+    .populate('comments.replies.user', 'username firstName lastName role avatar profilePhoto')
+    .populate('eventDetails.registeredParticipants.user', 'username firstName lastName role');
+
 // ➕ Créer un post
 exports.createPost = async (req, res) => {
   try {
+    if (!canUseSocialFeed(req)) {
+      return rejectForbiddenRole(res);
+    }
+
     console.log("req.user:", req.user); 
     console.log("req.user.userId:", req.user?.userId);
     
@@ -20,10 +55,15 @@ exports.createPost = async (req, res) => {
       targetAudience
     } = req.body;
     
+    const normalizedContent = String(content || '').trim();
+    if (!normalizedContent) {
+      return res.status(400).json({ success: false, message: 'Post content is required' });
+    }
+
     const post = new Post({
       author: req.user.userId,
-      title,
-      content,
+      title: deriveTitleFromContent(title, normalizedContent),
+      content: normalizedContent,
       type,
       category: category || getDefaultCategoryForType(type),
       media,
@@ -36,7 +76,8 @@ exports.createPost = async (req, res) => {
     });
     
     await post.save();
-    res.status(201).json({ success: true, data: post });
+    const populatedPost = await populatePostQuery(Post.findById(post._id));
+    res.status(201).json({ success: true, data: populatedPost });
   } catch (err) {
     console.error("Error creating post:", err);
     res.status(500).json({ success: false, message: err.message });
@@ -108,22 +149,17 @@ exports.getAllPosts = async (req, res) => {
     sort[sortBy] = parseInt(sortOrder);
 
     // First get pinned posts
-    const pinnedPosts = pinned === 'only' ? [] : await Post.find({ ...filter, isPinned: true })
-      .sort({ createdAt: -1 })
-      .populate('author', 'username firstName lastName role profileImage')
-      .populate('comments.user', 'username firstName lastName profileImage')
-      .populate('eventDetails.registeredParticipants.user', 'username firstName lastName');
+    const pinnedPosts =
+      pinned === 'only'
+        ? []
+        : await populatePostQuery(Post.find({ ...filter, isPinned: true }).sort({ createdAt: -1 }));
 
     // Then get regular posts
     let regularPosts = [];
     if (pinned !== 'only') {
-      regularPosts = await Post.find({ ...filter, isPinned: false })
-        .skip(skip)
-        .limit(parseInt(limit))
-        .sort(sort)
-        .populate('author', 'username firstName lastName role profileImage')
-        .populate('comments.user', 'username firstName lastName profileImage')
-        .populate('eventDetails.registeredParticipants.user', 'username firstName lastName');
+      regularPosts = await populatePostQuery(
+        Post.find({ ...filter, isPinned: false }).skip(skip).limit(parseInt(limit)).sort(sort)
+      );
     }
 
     // Combine pinned and regular posts
@@ -186,12 +222,12 @@ exports.searchPosts = async (req, res) => {
     
     const skip = (page - 1) * limit;
     
-    const posts = await Post.find(filter)
-      .skip(skip)
-      .limit(parseInt(limit))
-      .sort(query ? { score: { $meta: "textScore" } } : { createdAt: -1 })
-      .populate('author', 'username firstName lastName role profileImage')
-      .populate('comments.user', 'username firstName lastName profileImage');
+    const posts = await populatePostQuery(
+      Post.find(filter)
+        .skip(skip)
+        .limit(parseInt(limit))
+        .sort(query ? { score: { $meta: "textScore" } } : { createdAt: -1 })
+    );
       
     const total = await Post.countDocuments(filter);
     
@@ -214,10 +250,7 @@ exports.searchPosts = async (req, res) => {
 // 📄 Get single post by ID
 exports.getPostById = async (req, res) => {
   try {
-    const post = await Post.findById(req.params.id)
-      .populate('author', 'username firstName lastName role profileImage')
-      .populate('comments.user', 'username firstName lastName profileImage')
-      .populate('eventDetails.registeredParticipants.user', 'username firstName lastName');
+    const post = await populatePostQuery(Post.findById(req.params.id));
       
     if (!post) {
       return res.status(404).json({ success: false, message: "Post not found" });
@@ -244,7 +277,8 @@ exports.updatePost = async (req, res) => {
     }
     
     // Check if the user is authorized to update this post
-    if (post.author.toString() !== req.user.userId) {
+    const requestUserId = getRequestUserId(req);
+    if (post.author.toString() !== requestUserId && !isAdminUser(req)) {
       return res.status(403).json({ success: false, message: "Not authorized to update this post" });
     }
     
@@ -294,7 +328,8 @@ exports.deletePost = async (req, res) => {
     }
     
     // Check if the user is authorized to delete this post
-    if (post.author.toString() !== req.user.userId && req.user.role !== 'admin') {
+    const requestUserId = getRequestUserId(req);
+    if (post.author.toString() !== requestUserId && !isAdminUser(req)) {
       return res.status(403).json({ success: false, message: "Not authorized to delete this post" });
     }
     
@@ -310,7 +345,16 @@ exports.deletePost = async (req, res) => {
 // 💬 Ajouter un commentaire
 exports.addComment = async (req, res) => {
   try {
+    if (!canUseSocialFeed(req)) {
+      return rejectForbiddenRole(res);
+    }
+
     const { text } = req.body;
+    const normalizedText = String(text || '').trim();
+    if (!normalizedText) {
+      return res.status(400).json({ success: false, message: 'Comment text is required' });
+    }
+
     const post = await Post.findById(req.params.id);
     if (!post) {
       return res.status(404).json({ success: false, message: "Post not found" });
@@ -318,17 +362,16 @@ exports.addComment = async (req, res) => {
     
     const newComment = {
       user: req.user.userId,
-      text,
-      likes: []
+      text: normalizedText,
+      likes: [],
+      replies: []
     };
     
     post.comments.push(newComment);
     await post.save();
     
     // Populate the newly added comment with user details for the response
-    const populatedPost = await Post.findById(post._id)
-      .populate('author', 'username firstName lastName role')
-      .populate('comments.user', 'username firstName lastName');
+    const populatedPost = await populatePostQuery(Post.findById(post._id));
     
     res.json({ success: true, data: populatedPost });
   } catch (err) {
@@ -340,6 +383,10 @@ exports.addComment = async (req, res) => {
 // 🗑️ Delete comment
 exports.deleteComment = async (req, res) => {
   try {
+    if (!canUseSocialFeed(req)) {
+      return rejectForbiddenRole(res);
+    }
+
     const { postId, commentId } = req.params;
     const post = await Post.findById(postId);
     
@@ -354,14 +401,16 @@ exports.deleteComment = async (req, res) => {
     }
     
     // Check if the user is authorized to delete this comment
-    if (comment.user.toString() !== req.user.userId && req.user.role !== 'admin') {
+    const requestUserId = getRequestUserId(req);
+    if (comment.user.toString() !== requestUserId && !isAdminUser(req)) {
       return res.status(403).json({ success: false, message: "Not authorized to delete this comment" });
     }
     
-    comment.remove();
+    comment.deleteOne();
     await post.save();
     
-    res.json({ success: true, data: post });
+    const populatedPost = await populatePostQuery(Post.findById(post._id));
+    res.json({ success: true, data: populatedPost });
   } catch (err) {
     console.error("Error deleting comment:", err);
     res.status(500).json({ success: false, message: err.message });
@@ -371,19 +420,24 @@ exports.deleteComment = async (req, res) => {
 // ❤️ Liker/unliker un post
 exports.toggleLike = async (req, res) => {
   try {
+    if (!canUseSocialFeed(req)) {
+      return rejectForbiddenRole(res);
+    }
+
     const post = await Post.findById(req.params.id);
     if (!post) {
       return res.status(404).json({ success: false, message: "Post not found" });
     }
 
-    const userId = req.user.userId;
-    if (post.likes.includes(userId)) {
-      post.likes = post.likes.filter(id => id.toString() !== userId);
+    const userId = getRequestUserId(req);
+    if (post.likes.some((id) => id.toString() === userId)) {
+      post.likes = post.likes.filter((id) => id.toString() !== userId);
     } else {
       post.likes.push(userId);
     }
     await post.save();
-    res.json({ success: true, data: post });
+    const populatedPost = await populatePostQuery(Post.findById(post._id));
+    res.json({ success: true, data: populatedPost });
   } catch (err) {
     console.error("Error toggling like:", err);
     res.status(500).json({ success: false, message: err.message });
@@ -393,6 +447,10 @@ exports.toggleLike = async (req, res) => {
 // ❤️ Like/unlike a comment
 exports.toggleCommentLike = async (req, res) => {
   try {
+    if (!canUseSocialFeed(req)) {
+      return rejectForbiddenRole(res);
+    }
+
     const { postId, commentId } = req.params;
     const post = await Post.findById(postId);
     
@@ -406,19 +464,137 @@ exports.toggleCommentLike = async (req, res) => {
       return res.status(404).json({ success: false, message: "Comment not found" });
     }
     
-    const userId = req.user.userId;
-    if (comment.likes && comment.likes.includes(userId)) {
-      comment.likes = comment.likes.filter(id => id.toString() !== userId);
+    const userId = getRequestUserId(req);
+    if (comment.likes && comment.likes.some((id) => id.toString() === userId)) {
+      comment.likes = comment.likes.filter((id) => id.toString() !== userId);
     } else {
       if (!comment.likes) comment.likes = [];
       comment.likes.push(userId);
     }
     
     await post.save();
-    res.json({ success: true, data: post });
+    const populatedPost = await populatePostQuery(Post.findById(post._id));
+    res.json({ success: true, data: populatedPost });
   } catch (err) {
     console.error("Error toggling comment like:", err);
     res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+// 💬 Reply to a comment
+exports.addReply = async (req, res) => {
+  try {
+    if (!canUseSocialFeed(req)) {
+      return rejectForbiddenRole(res);
+    }
+
+    const { postId, commentId } = req.params;
+    const text = String(req.body?.text || '').trim();
+    if (!text) {
+      return res.status(400).json({ success: false, message: 'Reply text is required' });
+    }
+
+    const post = await Post.findById(postId);
+    if (!post) {
+      return res.status(404).json({ success: false, message: 'Post not found' });
+    }
+
+    const comment = post.comments.id(commentId);
+    if (!comment) {
+      return res.status(404).json({ success: false, message: 'Comment not found' });
+    }
+
+    comment.replies.push({
+      user: req.user.userId,
+      text,
+      likes: []
+    });
+    await post.save();
+
+    const populatedPost = await populatePostQuery(Post.findById(post._id));
+    return res.json({ success: true, data: populatedPost });
+  } catch (err) {
+    console.error('Error adding reply:', err);
+    return res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+// 🗑️ Delete reply
+exports.deleteReply = async (req, res) => {
+  try {
+    if (!canUseSocialFeed(req)) {
+      return rejectForbiddenRole(res);
+    }
+
+    const { postId, commentId, replyId } = req.params;
+    const post = await Post.findById(postId);
+    if (!post) {
+      return res.status(404).json({ success: false, message: 'Post not found' });
+    }
+
+    const comment = post.comments.id(commentId);
+    if (!comment) {
+      return res.status(404).json({ success: false, message: 'Comment not found' });
+    }
+
+    const reply = comment.replies.id(replyId);
+    if (!reply) {
+      return res.status(404).json({ success: false, message: 'Reply not found' });
+    }
+
+    const requestUserId = getRequestUserId(req);
+    if (reply.user.toString() !== requestUserId && !isAdminUser(req)) {
+      return res.status(403).json({ success: false, message: 'Not authorized to delete this reply' });
+    }
+
+    reply.deleteOne();
+    await post.save();
+
+    const populatedPost = await populatePostQuery(Post.findById(post._id));
+    return res.json({ success: true, data: populatedPost });
+  } catch (err) {
+    console.error('Error deleting reply:', err);
+    return res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+// ❤️ Like/unlike reply
+exports.toggleReplyLike = async (req, res) => {
+  try {
+    if (!canUseSocialFeed(req)) {
+      return rejectForbiddenRole(res);
+    }
+
+    const { postId, commentId, replyId } = req.params;
+    const post = await Post.findById(postId);
+    if (!post) {
+      return res.status(404).json({ success: false, message: 'Post not found' });
+    }
+
+    const comment = post.comments.id(commentId);
+    if (!comment) {
+      return res.status(404).json({ success: false, message: 'Comment not found' });
+    }
+
+    const reply = comment.replies.id(replyId);
+    if (!reply) {
+      return res.status(404).json({ success: false, message: 'Reply not found' });
+    }
+
+    const userId = getRequestUserId(req);
+    if (reply.likes && reply.likes.some((id) => id.toString() === userId)) {
+      reply.likes = reply.likes.filter((id) => id.toString() !== userId);
+    } else {
+      if (!reply.likes) reply.likes = [];
+      reply.likes.push(userId);
+    }
+
+    await post.save();
+    const populatedPost = await populatePostQuery(Post.findById(post._id));
+    return res.json({ success: true, data: populatedPost });
+  } catch (err) {
+    console.error('Error toggling reply like:', err);
+    return res.status(500).json({ success: false, message: err.message });
   }
 };
 

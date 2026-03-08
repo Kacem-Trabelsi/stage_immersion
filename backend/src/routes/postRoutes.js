@@ -18,6 +18,9 @@ router.delete('/:id', authenticateToken, postController.deletePost);
 router.post('/:id/comment', authenticateToken, postController.addComment);
 router.delete('/:postId/comment/:commentId', authenticateToken, postController.deleteComment);
 router.post('/:postId/comment/:commentId/like', authenticateToken, postController.toggleCommentLike);
+router.post('/:postId/comment/:commentId/reply', authenticateToken, postController.addReply);
+router.delete('/:postId/comment/:commentId/reply/:replyId', authenticateToken, postController.deleteReply);
+router.post('/:postId/comment/:commentId/reply/:replyId/like', authenticateToken, postController.toggleReplyLike);
 
 // Likes
 router.post('/:id/like', authenticateToken, postController.toggleLike);
